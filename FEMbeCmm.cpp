@@ -132,6 +132,8 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double betaz = 0.067;
 	const double betad = 0.5*(1.0 - betat - betaz);
 
+	vec3d  Nc = N[1];		// original diagonal fiber direction
+	vec3d  Nz = N[2];		// idem for symmetric
 	vec3d  Np = N[1]*sin(alpha)+N[2]*cos(alpha);		// original diagonal fiber direction
 	vec3d  Nn = N[1]*sin(alpha)-N[2]*cos(alpha);		// idem for symmetric
 
@@ -148,7 +150,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double KfKi   = 1.0;
 	const double inflam = 0.0*(sgr-1.0)/(endtime-1.0);
 
-	const double aexp = 1.0;									// 1.0 (KNOCKOUTS | TEVG) | 0.0 (CMAME | TORTUOSITY)
+	const double aexp = 0.0;									// 1.0 (KNOCKOUTS | TEVG) | 0.0 (CMAME | TORTUOSITY)
 
 	const double delta = 0.0;
 
@@ -288,18 +290,20 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		const double lz = (F*(Fio*N[2])).norm();						// lz -> 1 for F -> Fo
 
 		alpha = atan(tan(alpha)*pow(lt/lz,aexp));				// update alpha
-		Np = N[1]*sin(alpha)+N[2]*cos(alpha);					// update diagonal fiber vector
-		Nn = N[1]*sin(alpha)-N[2]*cos(alpha);					// idem for symmetric
+		Nc = Nc/(F*Nc).norm();
+		Nz = Nz/(F*Nz).norm();
+		Np = Np/(F*Np).norm();					// update diagonal fiber vector
+		Nn = Nn/(F*Nn).norm();					// idem for symmetric
 		
 		// passive
-		const mat3ds Smo = (cm*(lmt2-1.0)*exp(dm*(lmt2-1.0)*(lmt2-1.0))*(Gm*Gm)*dyad(N[1]));
-		const mat3ds Sco = (cc*(lct2-1.0)*exp(dc*(lct2-1.0)*(lct2-1.0))*(Gc*Gc)*dyad(N[1])*betat +
-					  cc*(lcz2-1.0)*exp(dc*(lcz2-1.0)*(lcz2-1.0))*(Gc*Gc)*dyad(N[2])*betaz +
+		const mat3ds Smo = (cm*(lmt2-1.0)*exp(dm*(lmt2-1.0)*(lmt2-1.0))*(Gm*Gm)*dyad(Nc));
+		const mat3ds Sco = (cc*(lct2-1.0)*exp(dc*(lct2-1.0)*(lct2-1.0))*(Gc*Gc)*dyad(Nc)*betat +
+					  cc*(lcz2-1.0)*exp(dc*(lcz2-1.0)*(lcz2-1.0))*(Gc*Gc)*dyad(Nz)*betaz +
 					  cc*(lcp2-1.0)*exp(dc*(lcp2-1.0)*(lcp2-1.0))*(Gc*Gc)*dyad( Np )*betad +
 					  cc*(lcn2-1.0)*exp(dc*(lcn2-1.0)*(lcn2-1.0))*(Gc*Gc)*dyad( Nn )*betad );
 
 		// active
-		const mat3ds Sao = Tmax*(1.0-exp(-CB*CB))*(1.0-pow((lamM-1.0)/(lamM-lam0),2))*(lto*lto)*dyad(N[1]);
+		const mat3ds Sao = Tmax*(1.0-exp(-CB*CB))*(1.0-pow((lamM-1.0)/(lamM-lam0),2))*(lto*lto)*dyad(Nc);
 		
 		mat3ds Uo; mat3d Ro; (Fio.inverse()).right_polar(Ro,Uo);	// Uo from polar decomposition
 		mat3d  uo(Uo);
@@ -322,11 +326,11 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		mat3ds sNa; sNa.zero();
 		if (Cratio>0) sNa = phim*(1.0-exp(-Cratio*Cratio))/(1.0-exp(-CB*CB))*sao;
 
-		const mat3ds Ui = U.inverse();            					// inverse of U
-		const mat3d  ui(Ui);
+		//const mat3ds Ui = U.inverse();            					// inverse of U
+		//const mat3d  ui(Ui);
 
-		const mat3ds Sf = J*(ui*sNf*ui).sym();						// J*Ui*sNf*Ui
-		const mat3ds Sa = J*(ui*sNa*ui).sym();						// J*Ui*sNa*Ui
+		const mat3ds Sf = J*(sNf);		//J*(ui*sNf*ui).sym()				// J*Ui*sNf*Ui
+		const mat3ds Sa = J*(sNa);		//J*(ui*sNa*ui).sym()				// J*Ui*sNa*Ui
 		
 		const mat3ds Sx = Se + Sf + Sa;
 
@@ -344,8 +348,8 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		sNc = sco;										// phic*schato = phic*sco
 
 		// 2nd P-K stresses
-		const mat3ds Sm = J*(ui*sNm*ui).sym();						// J*Ui*sNm*Ui
-		const mat3ds Sc = J*(ui*sNc*ui).sym();						// J*Ui*sNc*Ui
+		const mat3ds Sm = J*(sNm);			//J*(ui*sNm*ui).sym()			// J*Ui*sNm*Ui
+		const mat3ds Sc = J*(sNc);			//J*(ui*sNc*ui).sym()			// J*Ui*sNc*Ui
 
 		// associated Cauchy stresses
 		const mat3ds sm = 1.0/J*(F*(Sm*F.transpose())).sym();
@@ -444,7 +448,11 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		css += 1.0/3.0*(2.0*sx.tr()*IoIss-2.0*Ixsx-ddot(IxIss,css))
 			 + svo/(1.0-delta)*(1.0+KsKi*(EPS*pow(rIrIo,-3)-1.0)-KfKi*inflam)*(IxIss-2.0*IoIss)
 			 - 3.0*svo/(1.0-delta)*KsKi*EPS*pow(rIrIo,-4)*(ro/rIo/lt*Ixntt-(ro-rIo)/rIo/lr*Ixnrr);
+
+
 	}
+	
+	et.m_a = F*Np;
 
 	mat3ds s = 1.0/J*((F*(S*F.transpose()))).sym();
 	stress = s;
