@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<febio_diagnostic type="tangent test">
+    <Control>
+        <time_steps>1</time_steps>
+        <step_size>1</step_size>
+    </Control>
+  <Material>
+    <material id="1" name="Material1" type="mbe_cmm">
+        <density>1</density>
+    </material>
+  </Material>
+    <Scenario type="uni-axial">
+        <strain>-0.3</strain>
+    </Scenario>
+</febio_diagnostic>
