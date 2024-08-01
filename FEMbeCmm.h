@@ -62,7 +62,7 @@ public:
 	// setting m_secant_tangent = true so FESolidMaterial uses SecantTangent
 	// (allows minor symmetry only tangents) instead of Tangent (minor and major symmetries)
 	// 	 { return m_secant_tangent; }
-    bool m_secant_tangent;   //!< flag for using secant tangent
+    bool m_secant_tangent = true;   //!< flag for using secant tangent
 
     DECLARE_FECORE_CLASS();
 
@@ -95,5 +95,7 @@ public:
 		StressTangent(pt, stress, tangent);
 		return tangent;
 	}
+    
+    bool UseSecantTangent() override { return m_secant_tangent; }
 
 };

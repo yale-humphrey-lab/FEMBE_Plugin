@@ -9,6 +9,7 @@
 #include <signal.h>
 #define _USE_MATH_DEFINES						// to introduce pi constant (1/2)
 #include <math.h>								// to introduce pi constant (2/2)
+#include <limits>
 
 // define the material parameters
 BEGIN_FECORE_CLASS(FEMbeCmm, FEElasticMaterial)
@@ -141,7 +142,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double CB = sqrt(log(2.0));							// such that (1-exp(-CB^2)) = 0.5
 	const double CS = 0.5*CB * 1.0;							// such that (1-exp( -C^2)) = 0.0 for lt = 1/(1+CB/CS)^(1/3) = 0.7 and (1-exp(-C^2)) = 0.75 for lt = 2.0
 
-	const double KsKi = 0.35;
+	const double KsKi = 0.0;
 	const double EPS  = 1.0+(1.0-1.0)*(sgr-1.0)/(endtime-1.0);
 
 	const double KfKi   = 1.0;
