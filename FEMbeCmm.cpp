@@ -290,10 +290,10 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		const double lz = (F*(Fio*N[2])).norm();						// lz -> 1 for F -> Fo
 
 		alpha = atan(tan(alpha)*pow(lt/lz,aexp));				// update alpha
-		Nc = Nc/(F*Nc).norm();
-		Nz = Nz/(F*Nz).norm();
-		Np = Np/(F*Np).norm();					// update diagonal fiber vector
-		Nn = Nn/(F*Nn).norm();					// idem for symmetric
+		Nc = N[1]/(F*N[1]).norm();
+		Nz = N[2]/(F*N[2]).norm();
+		Np = (N[1]*sin(alpha)+N[2]*cos(alpha))/(F*(N[1]*sin(alpha)+N[2]*cos(alpha))).norm();					// update diagonal fiber vector
+		Nn = (N[1]*sin(alpha)-N[2]*cos(alpha))/(F*(N[1]*sin(alpha)-N[2]*cos(alpha))).norm();					// idem for symmetric
 		
 		// passive
 		const mat3ds Smo = (cm*(lmt2-1.0)*exp(dm*(lmt2-1.0)*(lmt2-1.0))*(Gm*Gm)*dyad(Nc));
