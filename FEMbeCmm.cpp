@@ -13,7 +13,7 @@
 
 // define the material parameters
 BEGIN_FECORE_CLASS(FEMbeCmm, FEElasticMaterial)
-    ADD_PARAMETER(m_secant_tangent, "secant_tangent");
+    ADD_PARAMETER(m_elastin_injury_val      , FE_RANGE_GREATER_OR_EQUAL(0.0), "elastin_injury_val");
 END_FECORE_CLASS();
 
 FEMbeCmm::FEMbeCmm(FEModel* pfem) : FEElasticMaterial(pfem)
@@ -39,6 +39,7 @@ void GRMaterialPoint::Init()
 	m_Fio.unit();
 	m_Jh = 1;
 	m_Fih.unit();
+	m_stress_inv_h = 0;
 
 	m_phic = 0;
 	m_Iemax = 0;
@@ -47,7 +48,7 @@ void GRMaterialPoint::Init()
 void GRMaterialPoint::Serialize(DumpStream& ar)
 {
 	FEMaterialPointData::Serialize(ar);
-	ar & m_Jo & m_svo & m_smo & m_sco & m_Fio & m_Jh & m_Fih & m_phic & m_Iemax;
+	ar & m_Jo & m_svo & m_smo & m_sco & m_Fio & m_Jh & m_Fih & m_phic & m_Iemax & m_stress_inv_h;
 }
 
 FEMaterialPointData* FEMbeCmm::CreateMaterialPointData() 
@@ -115,7 +116,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double Get = 1.90;
 	const double Gez = 1.62;
 
-	double alpha = 0.522;								// original orientation of diagonal collagen | 0.522 (CMAME | KNOCKOUTS) | 0.8713 (TEVG)
+	double alpha = 0.5218534;								// original orientation of diagonal collagen | 0.522 (CMAME | KNOCKOUTS) | 0.8713 (TEVG)
 
 	// original homeostatic parameters (adaptive)
 
@@ -168,7 +169,10 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const mat3ds Ge = 1.0/Get/Gez*dyad(N[0]) + Get*dyad(N[1]) + Gez*dyad(N[2]);
 	
 	// stress for elastin
-	const mat3ds Se = (phieo*mu*Ge*Ge).sym();						// phieo*Ge*Sehat*Ge = phieo*Ge*(mu*I)*Ge
+	mat3ds Se = (phieo*mu*Ge*Ge).sym();						// phieo*Ge*Sehat*Ge = phieo*Ge*(mu*I)*Ge
+	if (t <= partialtime + eps) {
+		Se = Se * (1.0 - m_elastin_injury_val(mp));
+	}
 
 	// computation of the second Piola-Kirchhoff stress
 	mat3ds S;
@@ -450,9 +454,12 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 			 - 3.0*svo/(1.0-delta)*KsKi*EPS*pow(rIrIo,-4)*(ro/rIo/lt*Ixntt-(ro-rIo)/rIo/lr*Ixnrr);
 
 
+		et.m_v.x = lr;
+		et.m_v.y = lt;
+		et.m_v.z = lz;
 	}
 	
-	et.m_a = F*Np;
+	et.m_a = F*Nn;
 
 	mat3ds s = 1.0/J*((F*(S*F.transpose()))).sym();
 	stress = s;
