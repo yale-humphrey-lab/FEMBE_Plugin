@@ -151,7 +151,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double KfKi   = 1.0;
 	const double inflam = 0.0*(sgr-1.0)/(endtime-1.0);
 
-	const double aexp = 0.0;									// 1.0 (KNOCKOUTS | TEVG) | 0.0 (CMAME | TORTUOSITY)
+	const double aexp = 1.0;									// 1.0 (KNOCKOUTS | TEVG) | 0.0 (CMAME | TORTUOSITY)
 
 	const double delta = 0.0;
 
