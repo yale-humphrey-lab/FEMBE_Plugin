@@ -10,6 +10,6 @@
     </material>
   </Material>
     <Scenario type="uni-axial">
-        <strain>-0.3</strain>
+        <strain>-0.1</strain>
     </Scenario>
 </febio_diagnostic>

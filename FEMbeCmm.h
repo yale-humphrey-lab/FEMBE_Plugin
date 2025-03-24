@@ -34,6 +34,7 @@ public:
 	mat3d		m_Fio;		//!< inverse of deformation gradient tensor at o
 	double		m_Jh;		//!< Jacobian at h
 	mat3d		m_Fih;		//!< inverse of deformation gradient tensor at h
+	double      m_stress_inv_h;
 
 	// evolved homeostatic (h) data
 	double		m_phic;		//!< total mass fraction of all collagen fiber families at h
@@ -63,6 +64,10 @@ public:
 	// (allows minor symmetry only tangents) instead of Tangent (minor and major symmetries)
 	// 	 { return m_secant_tangent; }
     bool m_secant_tangent = true;   //!< flag for using secant tangent
+	FEParamDouble     m_elastin_injury_val;      //!< K_delta_sigma
+	FEParamDouble     m_crosslinking_injury_val;      //!< K_delta_sigma
+	FEParamDouble     m_mechanosensing_injury_val;      //!< K_delta_sigma
+	FEParamDouble     m_mechanoregulation_injury_val;      //!< K_delta_sigma
 
     DECLARE_FECORE_CLASS();
 

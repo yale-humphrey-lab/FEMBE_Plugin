@@ -14,6 +14,9 @@
 // define the material parameters
 BEGIN_FECORE_CLASS(FEMbeCmm, FEElasticMaterial)
     ADD_PARAMETER(m_elastin_injury_val      , FE_RANGE_GREATER_OR_EQUAL(0.0), "elastin_injury_val");
+    ADD_PARAMETER(m_crosslinking_injury_val      , FE_RANGE_GREATER_OR_EQUAL(0.0), "crosslinking_injury_val");
+    ADD_PARAMETER(m_mechanosensing_injury_val      , FE_RANGE_GREATER_OR_EQUAL(0.0), "mechanosensing_injury_val");
+    ADD_PARAMETER(m_mechanoregulation_injury_val      , FE_RANGE_GREATER_OR_EQUAL(0.0), "mechanoregulation_injury_val");
 END_FECORE_CLASS();
 
 FEMbeCmm::FEMbeCmm(FEModel* pfem) : FEElasticMaterial(pfem)
@@ -76,9 +79,9 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	// get current and end times
 	const double t = GetFEModel()->GetTime().currentTime;
 
-	const double endtime = 11.0;							// 11.0 | 31.0-32.0 (TEVG)
-	const double partialtime = endtime;			// partialtime <= endtime | 10.0 | 10.4 (for TI calculation)
-	const double sgr = min(t,partialtime);		// min(t,partialtime) | min(t,9.0)
+	//const double endtime = 11.0;							// 11.0 | 31.0-32.0 (TEVG)
+	//const double partialtime = endtime;			// partialtime <= endtime | 10.0 | 10.4 (for TI calculation)
+	//const double sgr = min(t,partialtime);		// min(t,partialtime) | min(t,9.0)
 
 	// retrieve material position
 	const vec3d  X = mp.m_r0;
@@ -99,9 +102,12 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	vec3d N[3];
 
 	// pointwise, consistent with mesh generated with Matlab script <NodesElementsAsy.m>
-	N[2] = {0.0, imper/100.0*rIo*hwaves*M_PI/lo*cos(hwaves*M_PI*X.z/lo), 1.0}; N[2] = N[2]/sqrt(N[2]*N[2]);		// axial = d(Xcl)/d(z)
-	N[1] = {-NX.y, NX.x, NX.z};																					// circumferential
-	N[0] = N[2]^N[1];
+	double R_torus = 5.0;
+	N[2] = {0, -cos(atan2(X.y,X.z)), sin(atan2(X.y,X.z))};		// axial = d(Xcl)/d(z)
+	N[1] = {cos(atan2(X.x,(sqrt(pow(X.y,2.) + pow(X.z,2.)) - R_torus))), -sin(atan2(X.x,(sqrt(pow(X.y,2.) + pow(X.z,2.)) - R_torus))) * sin(atan2(X.y,X.z)), -sin(atan2(X.x,(sqrt(pow(X.y,2.) + pow(X.z,2.)) - R_torus))) * cos(atan2(X.y,X.z))};																					// circumferential
+	N[0] = {sin(atan2(X.x,(sqrt(pow(X.y,2.) + pow(X.z,2.)) - R_torus))), cos(atan2(X.x,(sqrt(pow(X.y,2.) + pow(X.z,2.)) - R_torus))) * sin(atan2(X.y,X.z)), cos(atan2(X.x,(sqrt(pow(X.y,2.) + pow(X.z,2.)) - R_torus))) * cos(atan2(X.y,X.z))};
+
+	// {-NX.y, NX.x, NX.z}
 
 	// elementwise, from input file
 	// N[2] = pt.m_Q.col(0); N[1] = pt.m_Q.col(1); N[0] = pt.m_Q.col(2);							// axial, circumferential, radial
@@ -121,12 +127,12 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	// original homeostatic parameters (adaptive)
 
 	// passive
-	const double cm = 261.4;									// 261.4 (CMAME | KNOCKOUTS) | 46.61 (TEVG)
-	const double dm = 0.24;
-	const double Gm = 1.20;
-	const double cc = 234.9;									// 234.9 (CMAME | KNOCKOUTS) | 328.475 (TEVG)
-	const double dc = 4.08;
-	const double Gc = 1.25;
+	double cm = 261.4;									// 261.4 (CMAME | KNOCKOUTS) | 46.61 (TEVG)
+	double dm = 0.24;
+	double Gm = 1.20;
+	double cc = 234.9;									// 234.9 (CMAME | KNOCKOUTS) | 328.475 (TEVG)
+	double dc = 4.08;
+	double Gc = 1.2;
 
 	// orientation fractions for collagen
 	const double betat = 0.056;
@@ -146,14 +152,14 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double CS = 0.5*CB * 1.0;							// such that (1-exp( -C^2)) = 0.0 for lt = 1/(1+CB/CS)^(1/3) = 0.7 and (1-exp(-C^2)) = 0.75 for lt = 2.0
 
 	const double KsKi = 0.0;
-	const double EPS  = 1.0+(1.0-1.0)*(sgr-1.0)/(endtime-1.0);
+	const double EPS  = 1.0;
 
 	const double KfKi   = 1.0;
-	const double inflam = 0.0*(sgr-1.0)/(endtime-1.0);
+	const double inflam = 0.0;
 
 	const double aexp = 0.0;									// 1.0 (KNOCKOUTS | TEVG) | 0.0 (CMAME | TORTUOSITY)
 
-	const double delta = 0.0;
+	const double delta = m_mechanosensing_injury_val(mp);
 
 	// compute U from polar decomposition of deformation gradient tensor
 	mat3ds U; mat3d R; F.right_polar(R,U);
@@ -170,8 +176,10 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	
 	// stress for elastin
 	mat3ds Se = (phieo*mu*Ge*Ge).sym();						// phieo*Ge*Sehat*Ge = phieo*Ge*(mu*I)*Ge
-	if (t <= partialtime + eps) {
+	if (t > 1.0 + eps) {
 		Se = Se * (1.0 - m_elastin_injury_val(mp));
+	    Gc = Gc * (1.0 - m_mechanoregulation_injury_val(mp));
+	    cc = cc * (1.0 - m_crosslinking_injury_val(mp));
 	}
 
 	// computation of the second Piola-Kirchhoff stress
@@ -190,6 +198,8 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	// computation of spatial moduli
 	tens4dmm css;
 	mat3ds sfpro;
+
+	//preloading, homeostatic, original
 	if (t <= 1.0 + eps) {
 		// compute stress
 		const double Jdep = 0.9999;
@@ -254,8 +264,12 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		c += lm/J*(IxI-2.0*log(Jdep*J)*IoI);
 
 		css = tens4dmm(c);		// c in tens4dmm form
+
+		et.m_v.x = phieo;
 	}
-	else if (t <= partialtime + eps) {
+
+	//equilibriated
+	else if (t > 1.0 + eps) {
 		// compute stress
 		const double    Jo = pt.m_Jo;
 		const double   svo = pt.m_svo;
@@ -263,7 +277,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		mat3ds        &sco = pt.m_sco;
 		const mat3d    Fio = pt.m_Fio;
 		double       &phic = pt.m_phic;
-		
+
 		phic = phico;																// initial guess
 		double dRdc = J/Jo*(1.0+phimo/phico*eta*pow(J/Jo*phic/phico,eta-1.0));		// initial tangent d(R)/d(phic)
 		double Rphi = phieo+phimo*pow(J/Jo*phic/phico,eta)+J/Jo*phic-J/Jo;			// initial residue
@@ -275,6 +289,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		phic = phic-Rphi/dRdc;														// converge phase -> phic (updated in material point memory)
 
 		const double phim = phimo/(J/Jo)*pow(J/Jo*phic/phico,eta);	// phim from <J*phim/phimo=(J*phic/phico)^eta>
+		double phie = phieo/(J/Jo);
 		
 		// recompute remodeled original stresses for smc and collagen (from remodeled natural configurations)
 
@@ -454,16 +469,38 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 			 - 3.0*svo/(1.0-delta)*KsKi*EPS*pow(rIrIo,-4)*(ro/rIo/lt*Ixntt-(ro-rIo)/rIo/lr*Ixnrr);
 
 
-		et.m_v.x = lr;
-		et.m_v.y = lt;
-		et.m_v.z = lz;
-	}
+
+		//Plotting
+		double sede=phie*(mu/2.0*((F*Ge).dotdot(F*Ge)-3.0));
+		double sedm=phim*(cm/(4.0*dm)*(exp(dm*(lmt2-1.0)*(lmt2-1.0))-1.0));
+		double sedc=phic*(cc/(4.0*dc)*(exp(dc*(lct2-1.0)*(lct2-1.0))-1.0)*betat+
+						  cc/(4.0*dc)*(exp(dc*(lcz2-1.0)*(lcz2-1.0))-1.0)*betaz+
+						  cc/(4.0*dc)*(exp(dc*(lcp2-1.0)*(lcp2-1.0))-1.0)*betad+
+						  cc/(4.0*dc)*(exp(dc*(lcn2-1.0)*(lcn2-1.0))-1.0)*betad);
 	
-	et.m_a = F*Nn;
+		et.m_v.y = phim;
+		et.m_v.z = phic;
+
+		et.m_a.x = sede + sedm + sedc;
+		
+		// Circumferential and axial stiffness components
+		et.m_a.y = phie*(2.0*mu*(((F*Ge).transpose())*(F*Ge)).dotdot(dyad(N[1])))+
+				   phim*(2.0*cm*exp(dm*(lmt2-1.0)*(lmt2-1.0))*((lmt2-1.0)+(1.0+2.0*dm*(lmt2-1.0)*(lmt2-1.0))*pow(Gm,2))*pow(Gm,2))+
+				   phic*(2.0*cc*exp(dc*(lct2-1.0)*(lct2-1.0))*((lct2-1.0)+(1.0+2.0*dc*(lct2-1.0)*(lct2-1.0))*pow(Gc,2))*pow(Gc,2)*betat+
+						 2.0*cc*exp(dc*(lcp2-1.0)*(lcp2-1.0))*((lcp2-1.0)+(1.0+2.0*dc*(lcp2-1.0)*(lcp2-1.0))*pow(Gc,2)*pow(sin(alpha),2))*pow(Gc,2)*pow(sin(alpha),2)*betad+
+						 2.0*cc*exp(dc*(lcn2-1.0)*(lcn2-1.0))*((lcn2-1.0)+(1.0+2.0*dc*(lcn2-1.0)*(lcn2-1.0))*pow(Gc,2)*pow(sin(alpha),2))*pow(Gc,2)*pow(sin(alpha),2)*betad);	// c_tttt
+		et.m_a.z = phie*(2.0*mu*(((F*Ge).transpose())*(F*Ge)).dotdot(dyad(N[2])))+
+				   phic*(2.0*cc*exp(dc*(lcz2-1.0)*(lcz2-1.0))*((lcz2-1.0)+(1.0+2.0*dc*(lcz2-1.0)*(lcz2-1.0))*pow(Gc,2))*pow(Gc,2)*betaz+
+						 2.0*cc*exp(dc*(lcp2-1.0)*(lcp2-1.0))*((lcp2-1.0)+(1.0+2.0*dc*(lcp2-1.0)*(lcp2-1.0))*pow(Gc,2)*pow(cos(alpha),2))*pow(Gc,2)*pow(cos(alpha),2)*betad+
+						 2.0*cc*exp(dc*(lcn2-1.0)*(lcn2-1.0))*((lcn2-1.0)+(1.0+2.0*dc*(lcn2-1.0)*(lcn2-1.0))*pow(Gc,2)*pow(cos(alpha),2))*pow(Gc,2)*pow(cos(alpha),2)*betad);	// c_zzzz
+		et.m_v.x = phie;
+
+	}
 
 	mat3ds s = 1.0/J*((F*(S*F.transpose()))).sym();
 	stress = s;
 
+	et.m_a = N[0];
 	pt.m_Iemax = s.dotdot(dyad(F*N[1]))/(F*N[1]).norm2();			// circumferential stress, just for plotting, temporary
 
 	tangent = css;
