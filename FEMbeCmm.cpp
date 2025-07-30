@@ -499,8 +499,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 
 	mat3ds s = 1.0/J*((F*(S*F.transpose()))).sym();
 	stress = s;
-
-	et.m_a = N[0];
+	
 	pt.m_Iemax = s.dotdot(dyad(F*N[1]))/(F*N[1]).norm2();			// circumferential stress, just for plotting, temporary
 
 	tangent = css;
