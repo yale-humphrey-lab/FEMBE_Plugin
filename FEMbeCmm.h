@@ -97,5 +97,7 @@ public:
 	}
     
     bool UseSecantTangent() override { return m_secant_tangent; }
+	
+	FEParamDouble     m_elastin_injury_val;
 
 };

@@ -39,7 +39,6 @@ void GRMaterialPoint::Init()
 	m_Fio.unit();
 	m_Jh = 1;
 	m_Fih.unit();
-	m_stress_inv_h = 0;
 
 	m_phic = 0;
 	m_Iemax = 0;
@@ -48,7 +47,7 @@ void GRMaterialPoint::Init()
 void GRMaterialPoint::Serialize(DumpStream& ar)
 {
 	FEMaterialPointData::Serialize(ar);
-	ar & m_Jo & m_svo & m_smo & m_sco & m_Fio & m_Jh & m_Fih & m_phic & m_Iemax & m_stress_inv_h;
+	ar & m_Jo & m_svo & m_smo & m_sco & m_Fio & m_Jh & m_Fih & m_phic & m_Iemax;
 }
 
 FEMaterialPointData* FEMbeCmm::CreateMaterialPointData() 
@@ -103,6 +102,9 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	N[1] = {-NX.y, NX.x, NX.z};																					// circumferential
 	N[0] = N[2]^N[1];
 
+    // push deformation gradient to local coordinates
+    mat3d Q = mat3d(N[0], N[1], N[2]);
+
 	// elementwise, from input file
 	// N[2] = pt.m_Q.col(0); N[1] = pt.m_Q.col(1); N[0] = pt.m_Q.col(2);							// axial, circumferential, radial
 
@@ -112,7 +114,10 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 
 	const double eta = 1.0;									// 1.0 | 1.0/3.0 (for uniform cases) | 0.714
 
-	const double mu = 89.71;
+	double mu = 89.71;
+	if (t > 1. + eps) {
+		mu = mu * (1.0 - m_elastin_injury_val(mp));
+	}
 	const double Get = 1.90;
 	const double Gez = 1.62;
 
@@ -146,10 +151,10 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	const double CS = 0.5*CB * 1.0;							// such that (1-exp( -C^2)) = 0.0 for lt = 1/(1+CB/CS)^(1/3) = 0.7 and (1-exp(-C^2)) = 0.75 for lt = 2.0
 
 	const double KsKi = 0.0;
-	const double EPS  = 1.0+(1.0-1.0)*(sgr-1.0)/(endtime-1.0);
+	const double EPS  = 0.0; //1.0+(1.0-1.0)*(sgr-1.0)/(endtime-1.0);
 
 	const double KfKi   = 1.0;
-	const double inflam = 0.0*(sgr-1.0)/(endtime-1.0);
+	const double inflam = 0.0; //0.0*(sgr-1.0)/(endtime-1.0);
 
 	const double aexp = 0.0;									// 1.0 (KNOCKOUTS | TEVG) | 0.0 (CMAME | TORTUOSITY)
 
@@ -170,9 +175,6 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	
 	// stress for elastin
 	mat3ds Se = (phieo*mu*Ge*Ge).sym();						// phieo*Ge*Sehat*Ge = phieo*Ge*(mu*I)*Ge
-	if (t <= partialtime + eps) {
-		Se = Se * (1.0 - m_elastin_injury_val(mp));
-	}
 
 	// computation of the second Piola-Kirchhoff stress
 	mat3ds S;
@@ -255,7 +257,7 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 
 		css = tens4dmm(c);		// c in tens4dmm form
 	}
-	else if (t <= partialtime + eps) {
+	else {
 		// compute stress
 		const double    Jo = pt.m_Jo;
 		const double   svo = pt.m_svo;
@@ -274,7 +276,8 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		} while (abs(Rphi) > sqrt(eps));											// && abs(Rphi/Rphi0) > sqrt(eps) && j<10
 		phic = phic-Rphi/dRdc;														// converge phase -> phic (updated in material point memory)
 
-		const double phim = phimo/(J/Jo)*pow(J/Jo*phic/phico,eta);	// phim from <J*phim/phimo=(J*phic/phico)^eta>
+		double phim = phimo/(J/Jo)*pow(J/Jo*phic/phico,eta);	// phim from <J*phim/phimo=(J*phic/phico)^eta>
+		double phie = phieo/(J/Jo);
 		
 		// recompute remodeled original stresses for smc and collagen (from remodeled natural configurations)
 
@@ -298,6 +301,19 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		Nz = N[2]/(F*N[2]).norm();
 		Np = (N[1]*sin(alpha)+N[2]*cos(alpha))/(F*(N[1]*sin(alpha)+N[2]*cos(alpha))).norm();					// update diagonal fiber vector
 		Nn = (N[1]*sin(alpha)-N[2]*cos(alpha))/(F*(N[1]*sin(alpha)-N[2]*cos(alpha))).norm();					// idem for symmetric
+
+
+		// Strain energy density
+		double sede=phie*(mu/2.0*((F*Ge).dotdot(F*Ge)-3.0));
+		double sedm=phim*(cm/(4.0*dm)*(exp(dm*(lmt2-1.0)*(lmt2-1.0))-1.0));
+		double sedc=phic*(cc/(4.0*dc)*(exp(dc*(lct2-1.0)*(lct2-1.0))-1.0)*betat+
+						  cc/(4.0*dc)*(exp(dc*(lcz2-1.0)*(lcz2-1.0))-1.0)*betaz+
+						  cc/(4.0*dc)*(exp(dc*(lcp2-1.0)*(lcp2-1.0))-1.0)*betad+
+						  cc/(4.0*dc)*(exp(dc*(lcn2-1.0)*(lcn2-1.0))-1.0)*betad);
+
+	    et.m_v.y = m_elastin_injury_val(mp);    // Aneurysm injuryy
+	    et.m_v.z = sede + sedm + sedc;
+	    
 		
 		// passive
 		const mat3ds Smo = (cm*(lmt2-1.0)*exp(dm*(lmt2-1.0)*(lmt2-1.0))*(Gm*Gm)*dyad(Nc));
@@ -341,6 +357,26 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		const double p = 1.0/3.0/J*Sx.dotdot(C) - svo/(1.0-delta)*(1.0+KsKi*(EPS*pow(rIrIo,-3)-1.0)-KfKi*inflam);		// Ups = 1 -> p
 		
 		S = Sx - J*p*Ci;
+
+
+	 	// passive
+		tens4ds c_output = phim*(2.0*cm*(1.0+2.0*dm*(lmt2-1.0)*(lmt2-1.0))*exp(dm*(lmt2-1.0)*(lmt2-1.0))*pow(Gm,4)*dyad1s(dyad(F*Nc)))      +
+							 phic*(2.0*cc*(1.0+2.0*dc*(lct2-1.0)*(lct2-1.0))*exp(dc*(lct2-1.0)*(lct2-1.0))*pow(Gc,4)*dyad1s(dyad(F*Nc))*betat +
+									2.0*cc*(1.0+2.0*dc*(lcz2-1.0)*(lcz2-1.0))*exp(dc*(lcz2-1.0)*(lcz2-1.0))*pow(Gc,4)*dyad1s(dyad(F*Nz))*betaz +
+									2.0*cc*(1.0+2.0*dc*(lcp2-1.0)*(lcp2-1.0))*exp(dc*(lcp2-1.0)*(lcp2-1.0))*pow(Gc,4)*dyad1s(dyad(F*Np))*betad +
+									2.0*cc*(1.0+2.0*dc*(lcn2-1.0)*(lcn2-1.0))*exp(dc*(lcn2-1.0)*(lcn2-1.0))*pow(Gc,4)*dyad1s(dyad(F*Nn))*betad);
+
+	    c_output = c_output.pp(Q.transpose());
+
+	    mat3ds s_output = 1.0/J*((F*(S*F.transpose()))).sym(); 
+	    s_output = (Q.transpose() * s_output * Q).sym();
+
+	    et.m_a.x = c_output(0,0,0,0) + 2. * s_output(0,0);     // Radial stiffness    
+	    et.m_a.y = c_output(1,1,1,1) + 2. * s_output(1,1);     // Circumfrential stiffness    
+	    et.m_a.z = c_output(2,2,2,2) + 2. * s_output(2,2);     // Axial stiffness
+
+
+
 		
 		pt.m_Jh  = J;
 		pt.m_Fih = F.inverse();
@@ -454,12 +490,9 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 			 - 3.0*svo/(1.0-delta)*KsKi*EPS*pow(rIrIo,-4)*(ro/rIo/lt*Ixntt-(ro-rIo)/rIo/lr*Ixnrr);
 
 
-		et.m_v.x = lr;
-		et.m_v.y = lt;
-		et.m_v.z = lz;
+
+
 	}
-	
-	et.m_a = F*Nn;
 
 	mat3ds s = 1.0/J*((F*(S*F.transpose()))).sym();
 	stress = s;
@@ -467,4 +500,5 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 	pt.m_Iemax = s.dotdot(dyad(F*N[1]))/(F*N[1]).norm2();			// circumferential stress, just for plotting, temporary
 
 	tangent = css;
+
 }
