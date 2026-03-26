@@ -256,6 +256,18 @@ void FEMbeCmm::StressTangent(FEMaterialPoint& mp, mat3ds& stress, tens4dmm& tang
 		c += lm/J*(IxI-2.0*log(Jdep*J)*IoI);
 
 		css = tens4dmm(c);		// c in tens4dmm form
+
+
+
+
+	 	// passive
+		tens4ds c_output = cf.pp(Q.transpose());
+	    mat3ds s_output = 1.0/J*((F*(S*F.transpose()))).sym(); 
+	    s_output = (Q.transpose() * s_output * Q).sym();
+	    et.m_a.x = c_output(0,0,0,0) + 2. * s_output(0,0);     // Radial stiffness    
+	    et.m_a.y = c_output(1,1,1,1) + 2. * s_output(1,1);     // Circumfrential stiffness    
+	    et.m_a.z = c_output(2,2,2,2) + 2. * s_output(2,2);     // Axial stiffness
+	    
 	}
 	else {
 		// compute stress
